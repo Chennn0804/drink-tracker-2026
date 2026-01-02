@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
@@ -21,7 +21,6 @@
             overflow-x: hidden;
         }
 
-        /* 磨砂玻璃效果 */
         .glass {
             background: rgba(255, 255, 255, 0.7);
             backdrop-filter: blur(12px);
@@ -65,16 +64,12 @@
             outline-offset: 2px;
         }
 
-        /* 隱藏捲軸但保有滾動功能 */
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-
         @keyframes float {
             0%, 100% { transform: translateY(0px); }
             50% { transform: translateY(-5px); }
         }
         .float-icon { animation: float 3s ease-in-out infinite; }
 
-        /* Modal 動畫 */
         #modal {
             display: none;
             opacity: 0;
@@ -105,31 +100,39 @@
             <div class="float-icon text-5xl">🍰</div>
         </header>
 
-        <!-- 統計卡片 -->
+        <!-- 修改後的統計卡片 -->
         <div class="glass rounded-[2.5rem] p-8 mb-8 shadow-sm">
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-2 gap-4 border-b border-rose-100 pb-6 mb-6">
+                <div>
+                    <p class="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-1">本月金額總計</p>
+                    <div class="flex items-baseline gap-1">
+                        <span class="text-rose-400 font-bold text-sm">NT$</span>
+                        <span id="monthSpend" class="text-4xl font-black text-rose-500">0</span>
+                    </div>
+                </div>
                 <div>
                     <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">本月杯數</p>
                     <div class="flex items-baseline gap-1">
-                        <span id="monthCount" class="text-4xl font-black text-rose-500">0</span>
+                        <span id="monthCount" class="text-4xl font-black text-slate-700">0</span>
                         <span class="text-slate-400 font-bold text-sm">杯</span>
                     </div>
                 </div>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">預估支出</p>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">2026 年度金額</p>
                     <div class="flex items-baseline gap-1">
-                        <span class="text-slate-400 font-bold text-sm">NT$</span>
-                        <span id="monthSpend" class="text-4xl font-black text-slate-700">0</span>
+                        <span class="text-slate-400 font-bold text-xs">NT$</span>
+                        <span id="yearSpend" class="text-2xl font-black text-slate-800">0</span>
                     </div>
                 </div>
-            </div>
-            <div class="mt-6">
-                <div class="flex justify-between text-[10px] font-bold text-slate-400 mb-2">
-                    <span>預算進度 (目標 $3,000)</span>
-                    <span id="budgetPercent">0%</span>
-                </div>
-                <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div id="budgetBar" class="bg-rose-400 h-full transition-all duration-1000" style="width: 0%"></div>
+                <div>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">年度總杯數</p>
+                    <div class="flex items-baseline gap-1">
+                        <span id="yearCount" class="text-2xl font-black text-slate-800">0</span>
+                        <span class="text-slate-400 font-bold text-xs">杯</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -149,9 +152,9 @@
             <div id="calendarGrid" class="calendar-grid"></div>
         </div>
 
-        <!-- 勳章與排行 -->
+        <!-- 排行 -->
         <div class="mb-10">
-            <h3 class="text-sm font-bold text-slate-400 mb-4 px-2 tracking-widest uppercase">最常光顧</h3>
+            <h3 class="text-sm font-bold text-slate-400 mb-4 px-2 tracking-widest uppercase">最常光顧 (本月)</h3>
             <div class="glass rounded-3xl p-5 flex items-center gap-4">
                 <div class="w-12 h-12 bg-rose-100 rounded-2xl flex items-center justify-center text-2xl">🏪</div>
                 <div>
@@ -196,18 +199,25 @@
                     <input type="text" id="inItem" placeholder="例如：熟成紅茶" class="w-full bg-slate-50 border-0 rounded-2xl p-4 text-sm outline-none">
                 </div>
                 <div class="grid grid-cols-2 gap-4">
-                    <select id="inIce" class="bg-slate-50 border-0 rounded-2xl p-4 text-sm outline-none appearance-none">
-                        <option value="正常">正常冰</option>
-                        <option value="少冰" selected>少冰</option>
-                        <option value="微冰">微冰</option>
-                        <option value="去冰">去冰</option>
-                    </select>
-                    <select id="inSugar" class="bg-slate-50 border-0 rounded-2xl p-4 text-sm outline-none appearance-none">
-                        <option value="全糖">全糖</option>
-                        <option value="半糖">半糖</option>
-                        <option value="微糖" selected>微糖</option>
-                        <option value="無糖">無糖</option>
-                    </select>
+                    <div class="relative">
+                        <label class="block text-[10px] font-black text-slate-400 mb-2 px-1 uppercase tracking-widest">Ice</label>
+                        <select id="inIce" class="w-full bg-slate-50 border-0 rounded-2xl p-4 text-sm outline-none appearance-none">
+                            <option value="正常">正常冰</option>
+                            <option value="少冰" selected>少冰</option>
+                            <option value="微冰">微冰</option>
+                            <option value="去冰">去冰</option>
+                        </select>
+                    </div>
+                    <div class="relative">
+                        <label class="block text-[10px] font-black text-slate-400 mb-2 px-1 uppercase tracking-widest">Sugar</label>
+                        <select id="inSugar" class="w-full bg-slate-50 border-0 rounded-2xl p-4 text-sm outline-none appearance-none">
+                            <option value="全糖">全糖</option>
+                            <option value="半糖">半糖</option>
+                            <option value="微糖" selected>微糖</option>
+                            <option value="一分糖">一分糖</option>
+                            <option value="無糖">無糖</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="pt-4 flex gap-3">
                     <button onclick="saveData()" class="flex-1 bg-rose-500 text-white font-bold py-5 rounded-[1.5rem] shadow-xl hover:bg-rose-600 transition-all">儲存紀錄</button>
@@ -292,27 +302,43 @@
         }
 
         function updateStats() {
-            let mCount = 0, mPrice = 0, shopStats = {};
-            const prefix = `${currentYear}-${String(currentMonth+1).padStart(2,'0')}`;
+            let mCount = 0, mPrice = 0, yCount = 0, yPrice = 0, shopStats = {};
+            const mPrefix = `${currentYear}-${String(currentMonth+1).padStart(2,'0')}`;
+            const yPrefix = `${currentYear}-`;
 
             Object.keys(db).forEach(key => {
-                if(key.startsWith(prefix)) {
+                const price = (parseFloat(db[key].price) || 0);
+                
+                // 年度統計 (只要是當年 2026)
+                if(key.startsWith(yPrefix)) {
+                    yCount++;
+                    yPrice += price;
+                }
+
+                // 月度統計
+                if(key.startsWith(mPrefix)) {
                     mCount++;
-                    mPrice += (parseFloat(db[key].price) || 0);
+                    mPrice += price;
                     shopStats[db[key].shop] = (shopStats[db[key].shop] || 0) + 1;
                 }
             });
 
+            // 更新顯示
             document.getElementById('monthCount').innerText = mCount;
             document.getElementById('monthSpend').innerText = mPrice.toLocaleString();
-            
-            const percent = Math.min(Math.round((mPrice / 3000) * 100), 100);
-            document.getElementById('budgetPercent').innerText = percent + "%";
-            document.getElementById('budgetBar').style.width = percent + "%";
+            document.getElementById('yearCount').innerText = yCount;
+            document.getElementById('yearSpend').innerText = yPrice.toLocaleString();
 
             const top = Object.entries(shopStats).sort((a,b) => b[1]-a[1])[0];
             document.getElementById('topShopName').innerText = top ? top[0] : "尚未有紀錄";
             document.getElementById('topShopCount').innerText = top ? `本月光顧了 ${top[1]} 次` : "紀錄你的第一杯手搖吧！";
+
+            // 動態更新問候語邏輯
+            const hours = new Date().getHours();
+            let g = "嗨，今天喝了嗎？";
+            if(mCount > 15) g = "本月喝得不少囉，要健康喔！🍵";
+            else if(hours >= 14 && hours <= 16) g = "下午茶時間到囉！☕";
+            document.getElementById('greeting').innerText = g;
         }
 
         function changeMonth(step) {
