@@ -15,81 +15,73 @@
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, deleteDoc, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase 設定由環境提供
+        // Firebase 設定
         const firebaseConfig = JSON.parse(__firebase_config);
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'drink-diary-2026';
 
-        // 全域變數
         let user = null;
+        let drinkData = {};
         let currentYear = new Date().getFullYear();
         let currentMonth = new Date().getMonth();
         let selectedKey = "";
-        let drinkData = {}; // 雲端資料暫存
-        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-        // 初始化認證 (Rule 3)
-        const initAuth = async () => {
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
-                // 如果沒有提供 token，我們讓使用者點擊 Google 登入
-            }
-        };
-        initAuth();
-
-        onAuthStateChanged(auth, (u) => {
-            user = u;
-            if (user) {
-                document.getElementById('loginOverlay').style.display = 'none';
-                document.getElementById('userDisplayName').innerText = user.displayName || "愛喝手搖的朋友";
-                document.getElementById('userPhoto').src = user.photoURL || "https://fav.farm/👤";
-                startListening();
-            } else {
-                document.getElementById('loginOverlay').style.display = 'flex';
-                updateStats(); // 清空統計
-            }
-        });
-
-        // 監聽雲端資料 (Rule 1 & 2)
-        function startListening() {
-            if (!user) return;
-            const userCol = collection(db, 'artifacts', appId, 'users', user.uid, 'drinks');
-            
-            // 使用簡單查詢，避免複查索引問題
-            onSnapshot(userCol, (snapshot) => {
-                drinkData = {};
-                snapshot.forEach(doc => {
-                    drinkData[doc.id] = doc.data();
-                });
-                render();
-                updateStats();
-            }, (error) => {
-                console.error("Firestore error:", error);
-            });
-        }
-
-        // Google 登入
+        // 登入處理 (解決手機版彈窗被阻擋問題)
         window.login = async () => {
             const provider = new GoogleAuthProvider();
             try {
-                await signInWithPopup(auth, provider);
+                // 使用 Redirect 而非 Popup，避免被瀏覽器阻擋
+                await signInWithRedirect(auth, provider);
             } catch (error) {
-                console.error("Login failed", error);
+                console.error("登入請求失敗", error);
+                alert("登入失敗，請確認是否開啟無痕模式或阻擋了 Cookie");
             }
         };
 
-        window.logout = () => signOut(auth);
+        // 處理重定向回來的結果
+        getRedirectResult(auth).catch((error) => {
+            console.error("重定向登入錯誤", error);
+        });
 
-        // --- 核心邏輯 ---
+        // 監聽認證狀態 (Rule 3)
+        onAuthStateChanged(auth, async (u) => {
+            user = u;
+            if (user) {
+                document.getElementById('loginOverlay').style.display = 'none';
+                document.getElementById('userDisplayName').innerText = user.displayName || "使用者";
+                document.getElementById('userPhoto').src = user.photoURL || "https://fav.farm/👤";
+                startListening();
+            } else {
+                // 如果有初始 Token (Rule 3)
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    try { await signInWithCustomToken(auth, __initial_auth_token); } catch(e) {}
+                }
+                document.getElementById('loginOverlay').style.display = 'flex';
+            }
+        });
 
+        function startListening() {
+            if (!user) return;
+            const userCol = collection(db, 'artifacts', appId, 'users', user.uid, 'drinks');
+            onSnapshot(userCol, (snapshot) => {
+                drinkData = {};
+                snapshot.forEach(doc => { drinkData[doc.id] = doc.data(); });
+                window.render();
+                window.updateStats();
+            }, (error) => console.error("資料讀取失敗", error));
+        }
+
+        window.logout = () => signOut(auth).then(() => location.reload());
+
+        // --- UI 操作 ---
         window.render = () => {
             const grid = document.getElementById('calendarGrid');
+            const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
             document.getElementById('monthLabel').innerText = monthNames[currentMonth];
             document.getElementById('currentDateText').innerText = `${currentYear}年 ${currentMonth + 1}月`;
             grid.innerHTML = "";
@@ -108,45 +100,9 @@
                 const node = document.createElement('div');
                 node.className = `day-node text-sm font-bold ${hasData ? 'has-data' : 'text-slate-400'} ${isToday ? 'is-today' : ''}`;
                 node.innerHTML = `<span>${d}</span>${hasData ? '<span class="text-[8px] mt-0.5 opacity-80">Drink</span>' : ''}`;
-                node.onclick = () => openModal(key);
+                node.onclick = () => window.openModal(key);
                 grid.appendChild(node);
             }
-        };
-
-        window.openModal = (key) => {
-            selectedKey = key;
-            const data = drinkData[key] || {};
-            document.getElementById('inShop').value = data.shop || "";
-            document.getElementById('inItem').value = data.item || "";
-            document.getElementById('inPrice').value = data.price || "";
-            document.getElementById('inIce').value = data.ice || "少冰";
-            document.getElementById('inSugar').value = data.sugar || "微糖";
-            document.getElementById('delBtn').className = data.shop ? "w-16 bg-slate-100 flex items-center justify-center rounded-[1.5rem]" : "hidden";
-            document.getElementById('modal').classList.add('active');
-        };
-
-        window.saveData = async () => {
-            if (!user) return;
-            const shop = document.getElementById('inShop').value.trim();
-            if(!shop) return;
-            
-            const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'drinks', selectedKey);
-            await setDoc(docRef, {
-                shop: shop,
-                item: document.getElementById('inItem').value,
-                price: document.getElementById('inPrice').value,
-                ice: document.getElementById('inIce').value,
-                sugar: document.getElementById('inSugar').value,
-                updatedAt: new Date().toISOString()
-            });
-            closeModal();
-        };
-
-        window.deleteData = async () => {
-            if (!user || !confirm("確定刪除雲端紀錄？")) return;
-            const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'drinks', selectedKey);
-            await deleteDoc(docRef);
-            closeModal();
         };
 
         window.updateStats = () => {
@@ -173,174 +129,171 @@
             document.getElementById('topShopCount').innerText = top ? `本月光顧了 ${top[1]} 次` : "紀錄你的第一杯手搖吧！";
         };
 
+        window.saveData = async () => {
+            if (!user) return;
+            const shop = document.getElementById('inShop').value.trim();
+            if(!shop) return;
+            const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'drinks', selectedKey);
+            await setDoc(docRef, {
+                shop: shop,
+                item: document.getElementById('inItem').value,
+                price: document.getElementById('inPrice').value,
+                ice: document.getElementById('inIce').value,
+                sugar: document.getElementById('inSugar').value
+            });
+            window.closeModal();
+        };
+
+        window.deleteData = async () => {
+            if (!user || !confirm("確定刪除雲端紀錄？")) return;
+            const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'drinks', selectedKey);
+            await deleteDoc(docRef);
+            window.closeModal();
+        };
+
+        window.openModal = (key) => {
+            selectedKey = key;
+            const data = drinkData[key] || {};
+            document.getElementById('inShop').value = data.shop || "";
+            document.getElementById('inItem').value = data.item || "";
+            document.getElementById('inPrice').value = data.price || "";
+            document.getElementById('inIce').value = data.ice || "少冰";
+            document.getElementById('inSugar').value = data.sugar || "微糖";
+            document.getElementById('delBtn').className = data.shop ? "w-16 bg-slate-100 flex items-center justify-center rounded-[1.5rem]" : "hidden";
+            document.getElementById('modal').classList.add('active');
+        };
+
+        window.closeModal = () => document.getElementById('modal').classList.remove('active');
+        window.openModalForToday = () => window.openModal(new Date().toISOString().split('T')[0]);
         window.changeMonth = (step) => {
             currentMonth += step;
             if(currentMonth > 11) { currentMonth=0; currentYear++; }
             else if(currentMonth < 0) { currentMonth=11; currentYear--; }
-            render(); updateStats();
+            window.render();
+            window.updateStats();
         };
 
-        window.closeModal = () => document.getElementById('modal').classList.remove('active');
-        window.openModalForToday = () => openModal(new Date().toISOString().split('T')[0]);
     </script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&family=Noto+Sans+TC:wght@400;700&display=swap');
-        body { font-family: 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif; background: #fff5f5; min-height: 100vh; -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif; background: #fff5f5; min-height: 100vh; margin: 0; padding: 0; }
         .glass { background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.4); }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
-        .day-node { aspect-ratio: 1/1; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); background: white; cursor: pointer; }
-        .day-node.has-data { background: linear-gradient(135deg, #fda4af 0%, #fb7185 100%); color: white; box-shadow: 0 4px 12px rgba(251, 113, 133, 0.3); }
+        .day-node { aspect-ratio: 1/1; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: white; cursor: pointer; }
+        .day-node.has-data { background: linear-gradient(135deg, #fda4af 0%, #fb7185 100%); color: white; }
         .day-node.is-today { outline: 3px solid #fb7185; outline-offset: 2px; }
-        #modal { display: none; opacity: 0; transition: opacity 0.2s; }
-        #modal.active { display: flex; opacity: 1; }
-        .modal-content { transform: translateY(20px); transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
-        #modal.active .modal-content { transform: translateY(0); }
-        #loginOverlay { position: fixed; inset: 0; background: rgba(255,245,245,0.9); z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(10px); }
+        #modal { display: none; position: fixed; inset: 0; z-index: 200; align-items: flex-end; justify-content: center; background: rgba(0,0,0,0.3); }
+        #modal.active { display: flex; }
+        .modal-content { width: 100%; max-width: 500px; background: white; border-radius: 2.5rem 2.5rem 0 0; padding: 2rem; }
+        #loginOverlay { position: fixed; inset: 0; background: white; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     </style>
 </head>
 <body class="pb-24">
 
-    <!-- 登入遮罩 -->
+    <!-- 登入介面 -->
     <div id="loginOverlay">
         <div class="text-6xl mb-6">🥤</div>
-        <h2 class="text-2xl font-black text-slate-800 mb-2">2026 雲端飲品日誌</h2>
-        <p class="text-slate-400 mb-8 text-sm">登入 Google 帳號，永久保存紀錄</p>
-        <button onclick="login()" class="bg-white text-slate-700 font-bold px-8 py-4 rounded-2xl shadow-xl flex items-center gap-3 border border-slate-100 active:scale-95 transition-all">
-            <img src="https://www.google.com/favicon.ico" class="w-5 h-5"> 使用 Google 登入
+        <h2 class="text-2xl font-black mb-2">雲端飲品日誌</h2>
+        <p class="text-slate-400 mb-8 text-sm px-10 text-center">請先登入 Google 以同步您的紀錄，資料將永久保存。</p>
+        <button onclick="login()" class="bg-rose-500 text-white font-bold px-10 py-4 rounded-full shadow-lg active:scale-95 transition-all">
+            使用 Google 登入
         </button>
     </div>
 
     <div class="max-w-xl mx-auto px-6 pt-10">
-        <header class="flex justify-between items-center mb-10">
+        <header class="flex justify-between items-center mb-8">
             <div class="flex items-center gap-3">
-                <img id="userPhoto" src="" class="w-12 h-12 rounded-2xl border-2 border-white shadow-sm">
+                <img id="userPhoto" src="" class="w-10 h-10 rounded-full border border-rose-100">
                 <div>
-                    <h1 id="userDisplayName" class="text-xl font-extrabold text-slate-800 tracking-tight">載入中...</h1>
-                    <button onclick="logout()" class="text-[10px] font-bold text-rose-400 uppercase tracking-widest">登出帳號</button>
+                    <h1 id="userDisplayName" class="text-lg font-black text-slate-800">載入中...</h1>
+                    <button onclick="logout()" class="text-[10px] text-rose-400 font-bold">登出</button>
                 </div>
             </div>
             <p id="currentDateText" class="text-rose-400 font-bold">2026年1月</p>
         </header>
 
         <!-- 統計卡片 -->
-        <div class="glass rounded-[2.5rem] p-8 mb-8 shadow-sm">
-            <div class="grid grid-cols-2 gap-4 border-b border-rose-100 pb-6 mb-6">
+        <div class="glass rounded-[2rem] p-6 mb-6">
+            <div class="grid grid-cols-2 gap-4 border-b border-rose-50 pb-4 mb-4">
                 <div>
-                    <p class="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-1">本月金額總計</p>
+                    <p class="text-[10px] font-bold text-rose-400 uppercase mb-1">本月總計</p>
                     <div class="flex items-baseline gap-1">
-                        <span class="text-rose-400 font-bold text-sm">NT$</span>
-                        <span id="monthSpend" class="text-4xl font-black text-rose-500">0</span>
+                        <span class="text-rose-400 text-xs">$</span>
+                        <span id="monthSpend" class="text-3xl font-black text-rose-500">0</span>
                     </div>
                 </div>
                 <div>
-                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">本月杯數</p>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase mb-1">本月杯數</p>
                     <div class="flex items-baseline gap-1">
-                        <span id="monthCount" class="text-4xl font-black text-slate-700">0</span>
-                        <span class="text-slate-400 font-bold text-sm">杯</span>
+                        <span id="monthCount" class="text-3xl font-black text-slate-700">0</span>
+                        <span class="text-slate-400 text-xs">杯</span>
                     </div>
                 </div>
             </div>
-            
-            <div class="grid grid-cols-2 gap-4 text-center md:text-left">
+            <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">2026 年度金額</p>
-                    <div class="flex items-baseline justify-center md:justify-start gap-1">
-                        <span class="text-slate-400 font-bold text-xs">NT$</span>
-                        <span id="yearSpend" class="text-2xl font-black text-slate-800">0</span>
-                    </div>
+                    <p class="text-[10px] font-bold text-slate-400 mb-1">年度累計</p>
+                    <span id="yearSpend" class="text-xl font-black text-slate-800">0</span>
                 </div>
                 <div>
-                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">年度總杯數</p>
-                    <div class="flex items-baseline justify-center md:justify-start gap-1">
-                        <span id="yearCount" class="text-2xl font-black text-slate-800">0</span>
-                        <span class="text-slate-400 font-bold text-xs">杯</span>
-                    </div>
+                    <p class="text-[10px] font-bold text-slate-400 mb-1">年度杯數</p>
+                    <span id="yearCount" class="text-xl font-black text-slate-800">0</span>
                 </div>
             </div>
         </div>
 
-        <div class="flex items-center justify-between mb-6 px-2">
-            <button onclick="changeMonth(-1)" class="w-12 h-12 glass rounded-2xl flex items-center justify-center text-rose-400 font-bold">←</button>
-            <span id="monthLabel" class="text-lg font-bold text-slate-700">January</span>
-            <button onclick="changeMonth(1)" class="w-12 h-12 glass rounded-2xl flex items-center justify-center text-rose-400 font-bold">→</button>
+        <div class="flex items-center justify-between mb-4">
+            <button onclick="changeMonth(-1)" class="w-10 h-10 glass rounded-xl flex items-center justify-center text-rose-400">←</button>
+            <span id="monthLabel" class="font-bold text-slate-700">January</span>
+            <button onclick="changeMonth(1)" class="w-10 h-10 glass rounded-xl flex items-center justify-center text-rose-400">→</button>
         </div>
 
-        <div class="glass rounded-[2.5rem] p-6 shadow-sm mb-10">
-            <div class="calendar-grid text-center text-[10px] font-black text-slate-300 mb-4 px-2 uppercase tracking-tighter">
-                <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+        <div class="glass rounded-[2rem] p-4 mb-8">
+            <div class="calendar-grid text-center text-[10px] font-bold text-slate-300 mb-2">
+                <div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div>
             </div>
             <div id="calendarGrid" class="calendar-grid"></div>
         </div>
 
-        <div class="mb-10">
-            <h3 class="text-sm font-bold text-slate-400 mb-4 px-2 tracking-widest uppercase">最常光顧 (本月)</h3>
-            <div class="glass rounded-3xl p-5 flex items-center gap-4">
-                <div class="w-12 h-12 bg-rose-100 rounded-2xl flex items-center justify-center text-2xl">🏪</div>
-                <div>
-                    <p id="topShopName" class="font-bold text-slate-700">尚未有紀錄</p>
-                    <p id="topShopCount" class="text-xs text-slate-400">紀錄你的第一杯手搖吧！</p>
-                </div>
+        <div class="glass rounded-2xl p-4 flex items-center gap-4">
+            <div class="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center">🏪</div>
+            <div>
+                <p id="topShopName" class="font-bold text-slate-700 text-sm">尚未有紀錄</p>
+                <p id="topShopCount" class="text-[10px] text-slate-400">開始紀錄你的 2026 吧！</p>
             </div>
         </div>
     </div>
 
-    <nav class="fixed bottom-8 left-0 right-0 px-6 flex justify-center pointer-events-none z-[100]">
-        <button onclick="openModalForToday()" class="pointer-events-auto bg-slate-900 text-white px-10 py-4 rounded-full font-bold shadow-2xl flex items-center gap-3 active:scale-95 transition-all">
-            <span class="text-2xl">+</span> 新增飲品
+    <nav class="fixed bottom-6 left-0 right-0 px-6 flex justify-center pointer-events-none">
+        <button onclick="openModalForToday()" class="pointer-events-auto bg-slate-900 text-white px-8 py-4 rounded-full font-bold shadow-xl flex items-center gap-2 active:scale-95 transition-all">
+            <span>+</span> 新增飲品
         </button>
     </nav>
 
-    <!-- 彈窗 (Modal) -->
-    <div id="modal" class="fixed inset-0 z-[200] px-4 items-end md:items-center pb-10 md:pb-0 bg-black/30 backdrop-blur-sm">
-        <div class="modal-content glass w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl border-t-4 border-rose-400 mx-auto">
-            <div class="flex justify-between items-center mb-8">
-                <div>
-                    <h3 class="text-2xl font-black text-slate-800">今天喝什麼？</h3>
-                    <p class="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Cloud Sync Enabled</p>
-                </div>
-                <button onclick="closeModal()" class="w-10 h-10 bg-slate-50 text-slate-400 rounded-full flex items-center justify-center font-bold text-xl">&times;</button>
+    <div id="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-black">今天喝什麼？</h3>
+                <button onclick="closeModal()" class="text-2xl text-slate-300">&times;</button>
             </div>
-
-            <div class="space-y-6">
-                <div class="grid grid-cols-3 gap-4">
-                    <div class="col-span-2">
-                        <label class="block text-[10px] font-black text-slate-400 mb-2 px-1 uppercase tracking-widest">Shop</label>
-                        <input type="text" id="inShop" placeholder="例如：可不可" class="w-full bg-slate-50 border-0 rounded-2xl p-4 text-sm outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 mb-2 px-1 uppercase tracking-widest">Price</label>
-                        <input type="number" id="inPrice" placeholder="$$" class="w-full bg-slate-50 border-0 rounded-2xl p-4 text-sm outline-none text-center">
-                    </div>
+            <div class="space-y-4">
+                <div class="grid grid-cols-3 gap-2">
+                    <input type="text" id="inShop" placeholder="店家" class="col-span-2 bg-slate-50 p-4 rounded-xl text-sm outline-none">
+                    <input type="number" id="inPrice" placeholder="價格" class="bg-slate-50 p-4 rounded-xl text-sm outline-none">
                 </div>
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 mb-2 px-1 uppercase tracking-widest">Drink Name</label>
-                    <input type="text" id="inItem" placeholder="例如：熟成紅茶" class="w-full bg-slate-50 border-0 rounded-2xl p-4 text-sm outline-none">
+                <input type="text" id="inItem" placeholder="飲品名稱" class="w-full bg-slate-50 p-4 rounded-xl text-sm outline-none">
+                <div class="grid grid-cols-2 gap-2">
+                    <select id="inIce" class="bg-slate-50 p-4 rounded-xl text-sm outline-none">
+                        <option value="正常">正常冰</option><option value="少冰" selected>少冰</option><option value="微冰">微冰</option><option value="去冰">去冰</option>
+                    </select>
+                    <select id="inSugar" class="bg-slate-50 p-4 rounded-xl text-sm outline-none">
+                        <option value="全糖">全糖</option><option value="半糖">半糖</option><option value="微糖" selected>微糖</option><option value="一分糖">一分糖</option><option value="無糖">無糖</option>
+                    </select>
                 </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="relative">
-                        <label class="block text-[10px] font-black text-slate-400 mb-2 px-1 uppercase tracking-widest">Ice</label>
-                        <select id="inIce" class="w-full bg-slate-50 border-0 rounded-2xl p-4 text-sm outline-none appearance-none">
-                            <option value="正常">正常冰</option>
-                            <option value="少冰" selected>少冰</option>
-                            <option value="微冰">微冰</option>
-                            <option value="去冰">去冰</option>
-                        </select>
-                    </div>
-                    <div class="relative">
-                        <label class="block text-[10px] font-black text-slate-400 mb-2 px-1 uppercase tracking-widest">Sugar</label>
-                        <select id="inSugar" class="w-full bg-slate-50 border-0 rounded-2xl p-4 text-sm outline-none appearance-none">
-                            <option value="全糖">全糖</option>
-                            <option value="半糖">半糖</option>
-                            <option value="微糖" selected>微糖</option>
-                            <option value="一分糖">一分糖</option>
-                            <option value="無糖">無糖</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="pt-4 flex gap-3">
-                    <button onclick="saveData()" class="flex-1 bg-rose-500 text-white font-bold py-5 rounded-[1.5rem] shadow-xl hover:bg-rose-600 active:scale-95 transition-all">儲存至雲端</button>
-                    <button id="delBtn" onclick="deleteData()" class="hidden w-16 bg-slate-100 text-slate-400 rounded-[1.5rem] flex items-center justify-center">🗑️</button>
+                <div class="flex gap-2">
+                    <button onclick="saveData()" class="flex-1 bg-rose-500 text-white font-bold py-4 rounded-xl">儲存</button>
+                    <button id="delBtn" onclick="deleteData()" class="hidden w-12 bg-slate-100 rounded-xl">🗑️</button>
                 </div>
             </div>
         </div>
